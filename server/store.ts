@@ -1,0 +1,478 @@
+import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
+import type {
+  BrandSettings,
+  EmailNotification,
+  Order,
+  OrderStatus,
+  Product,
+} from '../src/shared/types';
+import { formatCurrency, formatOrderStatusLabel } from '../src/utils/bakeryLogic';
+
+export interface BakeryDatabase {
+  products: Product[];
+  orders: Order[];
+  emailLogs: EmailNotification[];
+  brand: BrandSettings;
+  adminPasswordHash: string | null;
+  nextOrderSeq: number;
+}
+
+const DATA_DIR = path.resolve(process.cwd(), 'data');
+const DB_FILE = path.join(DATA_DIR, 'bakery-db.json');
+
+function createInitialSeedData(): BakeryDatabase {
+  const now = new Date().toISOString();
+  const yesterday = new Date(Date.now() - 86400 * 1000).toISOString();
+  const twoDaysAgo = new Date(Date.now() - 2 * 86400 * 1000).toISOString();
+
+  const products: Product[] = [
+    {
+      id: 'prod-country-sourdough',
+      slug: 'country-heritage-sourdough',
+      name: 'Country Heritage Sourdough',
+      category: 'Breads',
+      description:
+        'Our signature daily hearth loaf fermented cold for 36 hours using stone-milled organic wheat and whole grain rye.',
+      flavorNotes: 'Complex lactic tang, roasted hazelnut crust, custardy open crumb',
+      allergens: ['Wheat'],
+      imageUrl: '/src/assets/images/product_sourdough_loaf_1795412057458.jpg',
+      stock: 18,
+      isLimitedTime: false,
+      isActive: true,
+      options: [
+        { id: 'opt-boule-whole', label: 'Whole Boule (850g)', priceCents: 950 },
+        { id: 'opt-boule-half', label: 'Half Loaf (425g)', priceCents: 550 },
+      ],
+      createdAt: twoDaysAgo,
+      updatedAt: now,
+    },
+    {
+      id: 'prod-butter-croissant',
+      slug: 'cultured-butter-croissant',
+      name: 'Cultured Butter Croissant',
+      category: 'Pastries',
+      description:
+        'Three-day laminated viennoiserie folded with grass-fed cultured butter for shattering golden layers.',
+      flavorNotes: 'Sweet cultured cream, caramelized pastry edge, airy honeycomb center',
+      allergens: ['Wheat', 'Dairy', 'Eggs'],
+      imageUrl: '/src/assets/images/product_cardamom_croissant_1795412057428.jpg',
+      stock: 24,
+      isLimitedTime: false,
+      isActive: true,
+      options: [
+        { id: 'opt-croissant-1', label: 'Single Pastry', priceCents: 500 },
+        { id: 'opt-croissant-4', label: 'Morning Box of 4', priceCents: 1850 },
+        { id: 'opt-croissant-8', label: 'Sharing Box of 8', priceCents: 3500 },
+      ],
+      createdAt: twoDaysAgo,
+      updatedAt: now,
+    },
+    {
+      id: 'prod-cardamom-knot',
+      slug: 'swedish-cardamom-knot',
+      name: 'Swedish Cardamom Knot',
+      category: 'Pastries',
+      description:
+        'Hand-braided brioche dough swirled with freshly mortar-ground green cardamom, brown butter, and pearl sugar.',
+      flavorNotes: 'Fragrant green cardamom, warm vanilla butter, crunchy pearl sugar',
+      allergens: ['Wheat', 'Dairy', 'Eggs'],
+      imageUrl: '/src/assets/images/product_cardamom_croissant_1795412057428.jpg',
+      stock: 9,
+      isLimitedTime: true,
+      limitedLabel: 'Autumn Batch',
+      isActive: true,
+      options: [
+        { id: 'opt-knot-1', label: 'Single Knot', priceCents: 550 },
+        { id: 'opt-knot-6', label: 'Baker’s Box of 6', priceCents: 3000 },
+      ],
+      createdAt: yesterday,
+      updatedAt: now,
+    },
+    {
+      id: 'prod-pistachio-cake',
+      slug: 'sicilian-pistachio-vanilla-cake',
+      name: 'Sicilian Pistachio Layer Cake',
+      category: 'Cakes',
+      description:
+        'Three tender tiers of roasted pistachio sponge layered with Madagascar vanilla bean mascarpone cream and toasted praline.',
+      flavorNotes: 'Roasted Bronte pistachio, silky vanilla mascarpone, delicate sea salt',
+      allergens: ['Wheat', 'Dairy', 'Eggs', 'Tree Nuts'],
+      imageUrl: '/src/assets/images/product_pistachio_cake_1795412057875.jpg',
+      stock: 6,
+      isLimitedTime: false,
+      isActive: true,
+      options: [
+        { id: 'opt-cake-slice', label: 'Single Generous Slice', priceCents: 850 },
+        { id: 'opt-cake-6in', label: '6-Inch Whole (Serves 8)', priceCents: 5400 },
+        { id: 'opt-cake-8in', label: '8-Inch Whole (Serves 14)', priceCents: 7800 },
+      ],
+      createdAt: twoDaysAgo,
+      updatedAt: now,
+    },
+    {
+      id: 'prod-honey-fig-tart',
+      slug: 'brown-butter-honey-fig-tart',
+      name: 'Brown-Butter Honey Fig Tart',
+      category: 'Cakes',
+      description:
+        'Crisp all-butter pâte sucrée filled with almond frangipane, roasted black mission figs, fresh thyme, and wildflower honey.',
+      flavorNotes: 'Jammy roasted fig, toasted almond cream, herbal thyme blossom',
+      allergens: ['Wheat', 'Dairy', 'Eggs', 'Tree Nuts'],
+      imageUrl: '/src/assets/images/product_lemon_tart_1795412057616.jpg',
+      stock: 5,
+      isLimitedTime: true,
+      limitedLabel: 'Limited Harvest',
+      isActive: true,
+      options: [
+        { id: 'opt-fig-tartlet', label: 'Individual Tartlet', priceCents: 750 },
+        { id: 'opt-fig-9in', label: '9-Inch Whole Tart', priceCents: 4400 },
+      ],
+      createdAt: yesterday,
+      updatedAt: now,
+    },
+    {
+      id: 'prod-chocolate-cookie',
+      slug: 'brown-butter-sea-salt-cookie',
+      name: 'Brown-Butter Dark Chocolate Cookie',
+      category: 'Cookies',
+      description:
+        'Toasted brown-butter dough aged 24 hours with 70% dark chocolate pools and crisp flaky Maldon sea salt.',
+      flavorNotes: 'Caramelized butterscotch dough, bittersweet dark chocolate, flaky salt',
+      allergens: ['Wheat', 'Dairy', 'Eggs'],
+      imageUrl: '/src/assets/images/product_brown_butter_cookies_1795412057822.jpg',
+      stock: 32,
+      isLimitedTime: false,
+      isActive: true,
+      options: [
+        { id: 'opt-cookie-1', label: 'Single Cookie', priceCents: 425 },
+        { id: 'opt-cookie-6', label: 'Half Dozen (6)', priceCents: 2300 },
+        { id: 'opt-cookie-12', label: 'Baker’s Dozen (12)', priceCents: 4200 },
+      ],
+      createdAt: twoDaysAgo,
+      updatedAt: now,
+    },
+    {
+      id: 'prod-einkorn-batard',
+      slug: 'seeded-einkorn-honey-batard',
+      name: 'Seeded Einkorn & Honey Batard',
+      category: 'Breads',
+      description:
+        'Nutritious ancient einkorn grain loaf encrusted in toasted sesame, flaxseed, pumpkin seeds, and local honey.',
+      flavorNotes: 'Warm toasted seed crunch, nutty ancient wheat, gentle honey sweetness',
+      allergens: ['Wheat', 'Sesame'],
+      imageUrl: '/src/assets/images/product_sourdough_loaf_1795412057458.jpg',
+      stock: 11,
+      isLimitedTime: false,
+      isActive: true,
+      options: [
+        { id: 'opt-batard-whole', label: 'Whole Batard (750g)', priceCents: 1050 },
+        { id: 'opt-batard-sliced', label: 'Pre-Sliced Loaf', priceCents: 1125 },
+      ],
+      createdAt: twoDaysAgo,
+      updatedAt: now,
+    },
+    {
+      id: 'prod-yuzu-tartlet',
+      slug: 'yuzu-meringue-citrus-tartlet',
+      name: 'Yuzu Meringue Citrus Tartlet',
+      category: 'Pastries',
+      description:
+        'Bright Japanese yuzu and Meyer lemon curd crowned with lightly torched Swiss meringue in a crisp vanilla pastry shell.',
+      flavorNotes: 'Zesty yuzu citrus, velvet lemon curd, toasted marshmallow meringue',
+      allergens: ['Wheat', 'Dairy', 'Eggs'],
+      imageUrl: '/src/assets/images/product_lemon_tart_1795412057616.jpg',
+      stock: 14,
+      isLimitedTime: false,
+      isActive: true,
+      options: [
+        { id: 'opt-yuzu-1', label: 'Single Tartlet', priceCents: 700 },
+        { id: 'opt-yuzu-4', label: 'Box of 4 Tartlets', priceCents: 2600 },
+      ],
+      createdAt: yesterday,
+      updatedAt: now,
+    },
+  ];
+
+  const orders: Order[] = [
+    {
+      id: 'ord-seed-1041',
+      orderNumber: 'ABL-1041',
+      customerName: 'Clara Bennett',
+      customerEmail: 'clara.bennett@example.com',
+      customerPhone: '(415) 555-0148',
+      fulfillmentType: 'pickup',
+      deliveryAddress: '',
+      pickupWindow: '08:30 AM – 09:30 AM',
+      orderNotes: 'Please slice the sourdough loaf.',
+      paymentMethod: 'stripe_card',
+      paymentStatus: 'paid',
+      paymentReference: 'pi_3QSeed1041',
+      status: 'completed',
+      items: [
+        {
+          productId: 'prod-country-sourdough',
+          optionId: 'opt-boule-whole',
+          productName: 'Country Heritage Sourdough',
+          optionLabel: 'Whole Boule (850g)',
+          category: 'Breads',
+          unitPriceCents: 950,
+          quantity: 2,
+          lineTotalCents: 1900,
+        },
+        {
+          productId: 'prod-butter-croissant',
+          optionId: 'opt-croissant-4',
+          productName: 'Cultured Butter Croissant',
+          optionLabel: 'Morning Box of 4',
+          category: 'Pastries',
+          unitPriceCents: 1850,
+          quantity: 1,
+          lineTotalCents: 1850,
+        },
+      ],
+      subtotalCents: 3750,
+      deliveryFeeCents: 0,
+      taxCents: 309,
+      totalCents: 4059,
+      createdAt: twoDaysAgo,
+      updatedAt: twoDaysAgo,
+    },
+    {
+      id: 'ord-seed-1042',
+      orderNumber: 'ABL-1042',
+      customerName: 'Julian Park',
+      customerEmail: 'julian.park@example.com',
+      customerPhone: '(415) 555-0182',
+      fulfillmentType: 'delivery',
+      deliveryAddress: '742 Evergreen Terrace, Apt 4B',
+      pickupWindow: '',
+      orderNotes: 'Leave with building concierge if needed.',
+      paymentMethod: 'paypal',
+      paymentStatus: 'paid',
+      paymentReference: 'PAYID-1042-SEED',
+      status: 'baking',
+      items: [
+        {
+          productId: 'prod-pistachio-cake',
+          optionId: 'opt-cake-6in',
+          productName: 'Sicilian Pistachio Layer Cake',
+          optionLabel: '6-Inch Whole (Serves 8)',
+          category: 'Cakes',
+          unitPriceCents: 5400,
+          quantity: 1,
+          lineTotalCents: 5400,
+        },
+        {
+          productId: 'prod-chocolate-cookie',
+          optionId: 'opt-cookie-6',
+          productName: 'Brown-Butter Dark Chocolate Cookie',
+          optionLabel: 'Half Dozen (6)',
+          category: 'Cookies',
+          unitPriceCents: 2300,
+          quantity: 1,
+          lineTotalCents: 2300,
+        },
+      ],
+      subtotalCents: 7700,
+      deliveryFeeCents: 0,
+      taxCents: 635,
+      totalCents: 8335,
+      createdAt: yesterday,
+      updatedAt: now,
+    },
+  ];
+
+  const emailLogs: EmailNotification[] = [
+    {
+      id: 'email-seed-1',
+      orderId: 'ord-seed-1042',
+      orderNumber: 'ABL-1042',
+      recipientEmail: 'julian.park@example.com',
+      recipientName: 'Julian Park',
+      type: 'order_confirmation',
+      subject: "AI Baker's Life — Order Confirmation #ABL-1042",
+      bodyText:
+        "Hi Julian Park,\n\nThank you for your order with AI Baker's Life! Your order #ABL-1042 ($83.35) is confirmed and scheduled for local delivery to 742 Evergreen Terrace, Apt 4B.",
+      deliveryChannel: 'simulated_outbox',
+      status: 'logged',
+      sentAt: yesterday,
+    },
+  ];
+
+  const brand: BrandSettings = {
+    bakeryName: "AI Baker's Life",
+    tagline: 'Small-batch sourdough, laminated pastries & celebration cakes baked fresh every morning.',
+    logoText: "AI Baker's Life",
+    primaryColor: '#1C1917',
+    accentColor: '#9A4B1E',
+    pickupAddress: '214 Hearthstone Lane, Bakery Row',
+    openingHours: 'Tue – Sun · 7:30 AM – 5:00 PM',
+    contactEmail: 'hello@aibakerslife.com',
+    deliveryFeeCents: 600,
+    freeDeliveryThresholdCents: 4500,
+    taxRateBasisPoints: 825,
+  };
+
+  return {
+    products,
+    orders,
+    emailLogs,
+    brand,
+    adminPasswordHash: null,
+    nextOrderSeq: 1043,
+  };
+}
+
+export function loadDatabase(): BakeryDatabase {
+  if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+  }
+  if (!fs.existsSync(DB_FILE)) {
+    const seed = createInitialSeedData();
+    saveDatabase(seed);
+    return seed;
+  }
+  try {
+    const raw = fs.readFileSync(DB_FILE, 'utf8');
+    const parsed = JSON.parse(raw) as BakeryDatabase;
+    return parsed;
+  } catch {
+    const seed = createInitialSeedData();
+    saveDatabase(seed);
+    return seed;
+  }
+}
+
+export function saveDatabase(db: BakeryDatabase): void {
+  if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+  }
+  const tmpFile = `${DB_FILE}.${process.pid}.${Date.now()}.tmp`;
+  fs.writeFileSync(tmpFile, JSON.stringify(db, null, 2), 'utf8');
+  fs.renameSync(tmpFile, DB_FILE);
+}
+
+export function hashPassword(password: string): string {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const derived = crypto.scryptSync(password, salt, 64).toString('hex');
+  return `${salt}:${derived}`;
+}
+
+export function verifyPasswordHash(password: string, storedHash: string): boolean {
+  const parts = storedHash.split(':');
+  if (parts.length !== 2) return false;
+  const [salt, keyHex] = parts;
+  const keyBuf = Buffer.from(keyHex, 'hex');
+  const derivedBuf = crypto.scryptSync(password, salt, 64);
+  if (keyBuf.length !== derivedBuf.length) return false;
+  return crypto.timingSafeEqual(keyBuf, derivedBuf);
+}
+
+export function verifyPlaintextPasscode(input: string, envPasscode: string): boolean {
+  const a = Buffer.from(input);
+  const b = Buffer.from(envPasscode);
+  if (a.length !== b.length) return false;
+  return crypto.timingSafeEqual(a, b);
+}
+
+export async function dispatchOrderEmail(
+  order: Order,
+  type: 'order_confirmation' | 'status_update',
+  brand: BrandSettings,
+): Promise<EmailNotification> {
+  const statusLabel = formatOrderStatusLabel(order.status, order.fulfillmentType);
+  const itemLines = order.items
+    .map(
+      (i) =>
+        `• ${i.quantity}x ${i.productName} (${i.optionLabel}) — ${formatCurrency(i.lineTotalCents)}`,
+    )
+    .join('\n');
+
+  const fulfillmentDetails =
+    order.fulfillmentType === 'pickup'
+      ? `Pickup at ${brand.pickupAddress} (${order.pickupWindow})`
+      : `Local Delivery to ${order.deliveryAddress}`;
+
+  const subject =
+    type === 'order_confirmation'
+      ? `${brand.bakeryName} — Order Confirmation #${order.orderNumber}`
+      : `${brand.bakeryName} — Order #${order.orderNumber} is now ${statusLabel}`;
+
+  const intro =
+    type === 'order_confirmation'
+      ? `Thank you for ordering from ${brand.bakeryName}! We've received your payment (${order.paymentMethod === 'stripe_card' ? 'Card via Stripe' : 'PayPal'}) and our bakers have your ticket.`
+      : `Good news — your order #${order.orderNumber} status has been updated to: ${statusLabel}.`;
+
+  const bodyText = [
+    `Hi ${order.customerName},`,
+    '',
+    intro,
+    '',
+    `Order Number: #${order.orderNumber}`,
+    `Fulfillment: ${fulfillmentDetails}`,
+    order.orderNotes ? `Bakery Notes: ${order.orderNotes}` : null,
+    '',
+    'Order Summary:',
+    itemLines,
+    '',
+    `Subtotal: ${formatCurrency(order.subtotalCents)}`,
+    `Delivery: ${order.deliveryFeeCents === 0 ? 'Free' : formatCurrency(order.deliveryFeeCents)}`,
+    `Tax: ${formatCurrency(order.taxCents)}`,
+    `Total Paid: ${formatCurrency(order.totalCents)}`,
+    '',
+    `Questions? Reply to ${brand.contactEmail}`,
+    `— ${brand.bakeryName}`,
+  ]
+    .filter((line) => line !== null)
+    .join('\n');
+
+  let deliveryChannel: 'resend_live' | 'simulated_outbox' = 'simulated_outbox';
+  let status: 'sent' | 'logged' = 'logged';
+
+  const resendKey = process.env.RESEND_API_KEY?.trim();
+  const emailFrom = process.env.EMAIL_FROM?.trim() || `${brand.bakeryName} <onboarding@resend.dev>`;
+
+  if (resendKey) {
+    try {
+      const resp = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${resendKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          from: emailFrom,
+          to: [order.customerEmail],
+          subject,
+          text: bodyText,
+        }),
+      });
+      if (resp.ok) {
+        deliveryChannel = 'resend_live';
+        status = 'sent';
+      }
+    } catch {
+      // Fall back to logged outbox if live provider is unreachable in sandbox
+    }
+  }
+
+  return {
+    id: `email-${crypto.randomUUID()}`,
+    orderId: order.id,
+    orderNumber: order.orderNumber,
+    recipientEmail: order.customerEmail,
+    recipientName: order.customerName,
+    type,
+    subject,
+    bodyText,
+    deliveryChannel,
+    status,
+    sentAt: new Date().toISOString(),
+  };
+}
+
+export function buildOrderStatusSummaryText(status: OrderStatus): string {
+  return status;
+}

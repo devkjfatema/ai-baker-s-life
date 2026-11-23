@@ -1,0 +1,8 @@
+{
+  "name": "AI Baker's Life",
+  "description": "Artisanal bakery storefront and operations dashboard for ordering freshly baked cakes, pastries, sourdough breads, and cookies for local pickup or delivery.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
